@@ -145,6 +145,7 @@ withRepoLock(dataDir, "sync")
 | --- | --- |
 | Global developer | `developers/<developer>/profile.json` and `analysis/developers/<developer>/global.json` |
 | Project + developer | `projects/<project>/developers/<developer>/profile.json` and `analysis/projects/<project>/developers/<developer>.json` |
+| Global deep profile (opt-in) | `developers/<developer>/deep-profile.md` |
 | Project shared | `projects/<project>/conventions.md`, `shared-context.md` (read-only to the analyzer) |
 | Proposal | `analysis/projects/<project>/shared-context.proposal.md` |
 
@@ -178,7 +179,20 @@ The analyzer is deterministic and local. It does not call an LLM. Preferences ar
 - evidence record IDs and quotes
 - origin (`explicit`, `repeated`, `inferred`)
 
-Technical signals come from a dictionary of languages, frameworks, databases, infrastructure, cloud, testing, and runtimes, plus filename extensions. Shell commands are summarized to the first four tokens and redacted.
+Technical signals come from a dictionary of languages, frameworks, databases, infrastructure, cloud, testing, and runtimes, plus filename extensions. Shell commands are summarized to the first four tokens and redacted. Commands are read from both `message.shell` records and `message.assistant.tool` records whose tool name is `shell`.
+
+Log-like lines (for example `npm error`, `Error:`, stack traces, `ECONNREFUSED`, and 403/404 messages) are excluded before preference extraction. The whole source line is skipped so a trailing fragment such as `Never retry this.` is not learned as a preference.
+
+### Optional deep analysis
+
+`/memory-deep-analyze` and the `deep_analyze` tool action are explicit opt-in operations. They do not run on a schedule. The runtime builds a prompt from:
+
+- `developers/<developer>/preferences.md`
+- the global profile
+- the current project profile
+- optionally, the last 30 user messages (truncated, redacted, and capped)
+
+It calls `ctx.generate.text` with the default model or a `provider/model` supplied by the user, writes `developers/<developer>/deep-profile.md`, and then uses the normal safe commit/push path. The file is a hint for future model requests, not an authoritative rule. It is injected at lower priority than project rules and explicit preferences.
 
 ### Shared-context proposal
 
@@ -192,7 +206,8 @@ The proposal contains stack signals, languages, repeated commands, and **candida
 2. Project shared context (`projects/<project>/shared-context.md`)
 3. Project personal profile (`projects/<project>/developers/<developer>/profile.json`)
 4. Explicit personal notes (`developers/<developer>/preferences.md`)
-5. Global personal profile (`developers/<developer>/profile.json`)
+5. Optional LLM deep profile (`developers/<developer>/deep-profile.md`)
+6. Global personal profile (`developers/<developer>/profile.json`)
 
 Behavior:
 
@@ -220,6 +235,7 @@ The injected text explicitly tells the model that project rules take precedence 
 | Corrupt config | Configuration error; plugin does not crash |
 | Event stream ends | Logged; polling continues |
 | Context build fails | Debug log; request proceeds without context |
+| Deep analysis model call fails | Error returned to the caller; no deep-profile file is written |
 | Git lock contention | Waits up to 30s, then reports a retryable error |
 
 ## Security boundaries

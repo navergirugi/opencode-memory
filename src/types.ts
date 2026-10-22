@@ -1,7 +1,7 @@
 /** Shared types for the OpenCode memory plugin. */
 
 export const SCHEMA_VERSION = 1
-export const ANALYZER_VERSION = "1.0.0"
+export const ANALYZER_VERSION = "1.1.0"
 
 export type RecordSource = "api" | "prompt-hook" | "event" | "tool-hook"
 

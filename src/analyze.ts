@@ -102,6 +102,21 @@ const EXTENSIONS: Record<string, string> = {
 const PREFERENCE_CUE =
   /(\balways\b|\bnever\b|\bprefer\b|\bavoid\b|\binstead of\b|\bmake sure\b|\bdon't\b|\bdo not\b|항상|절대|선호|하지\s?마|대신|꼭|되도록|주의)/i
 
+/**
+ * Error logs and shell output often contain words such as "do not" or "never".
+ * They are not user preferences, so keep them out of the inferred profile.
+ */
+const LOG_LIKE = [
+  /^(?:npm|yarn|pnpm|bun|node|deno|python|java|go|cargo|git)\s+(?:error|warn(?:ing)?|info|fatal)\b/i,
+  /^(?:error|fatal|exception|traceback|failed|failure)\b/i,
+  /\b(?:ENOENT|EACCES|ECONNREFUSED|ETIMEDOUT|ERR_[A-Z0-9_]+)\b/,
+  /\b(?:403|404|500)\b.*\b(?:forbidden|not found|internal server error|unauthorized)\b/i,
+  /\bat\s+\S+\s+\([^)]*:\d+:\d+\)/,
+  /\byou do not have access to\b/i,
+  /\btwo-factor authentication\b.*\b(?:required|enabled|bypass)\b/i,
+  /^\s*[{\[]\s*"error"/,
+]
+
 export interface AnalysisOptions {
   repoDir: string
   store: RecordStore
@@ -184,7 +199,7 @@ async function analyzeScope(input: {
   const delta = analyzeRecords(fresh, {
     scope,
     developerID: options.developerID,
-    projectID: options.projectID,
+    projectID: scope === "project" ? options.projectID : undefined,
     previous: previousProfile ?? undefined,
     allRecords: records,
   })
@@ -285,29 +300,36 @@ export function extractPreferences(records: MemoryRecord[]): Preference[] {
     if (record.kind !== "message.user") continue
     const text = typeof record.payload.text === "string" ? record.payload.text : ""
     if (!text) continue
-    for (const sentence of splitSentences(text)) {
-      if (sentence.length < 12 || sentence.length > 320) continue
-      if (!PREFERENCE_CUE.test(sentence)) continue
-      if (/^(?:please|부탁|해줘|고마워|thanks?)[\s.!?]*$/i.test(sentence)) continue
-      const quote = redactText(sentence, 200)
-      const id = `pref-${shortHash(normalize(sentence), 12)}`
-      const evidence: Evidence = { record_id: record.record_id, quote }
-      const existing = byId.get(id)
-      if (existing) {
-        if (!existing.evidence.some((entry) => entry.record_id === evidence.record_id)) {
-          existing.evidence.push(evidence)
-          existing.evidence = existing.evidence.slice(0, 8)
-          existing.confidence = Math.min(0.9, existing.confidence + 0.1)
-          existing.origin = "repeated"
+    for (const line of text.split(/\n+/)) {
+      // A log line can contain a fragment that looks like a preference
+      // ("... Never retry this."). Skip the whole line rather than learning it.
+      if (LOG_LIKE.some((pattern) => pattern.test(line))) continue
+      for (const sentence of splitSentences(line)) {
+        if (sentence.length < 12 || sentence.length > 320) continue
+        if (!PREFERENCE_CUE.test(sentence)) continue
+        if (LOG_LIKE.some((pattern) => pattern.test(sentence))) continue
+        if (/^(?:please|부탁|해줘|고마워|thanks?)[\s.!?]*$/i.test(sentence)) continue
+        const quote = redactText(sentence, 200)
+        const id = `pref-${shortHash(normalize(sentence), 12)}`
+        const evidence: Evidence = { record_id: record.record_id, quote }
+        const existing = byId.get(id)
+        if (existing) {
+          if (!existing.evidence.some((entry) => entry.record_id === evidence.record_id)) {
+            existing.evidence.push(evidence)
+            existing.evidence = existing.evidence.slice(0, 8)
+            existing.confidence = Math.min(0.9, existing.confidence + 0.1)
+            existing.origin = "repeated"
+          }
+        } else {
+          byId.set(id, {
+            id,
+            statement: quote,
+            confidence: 0.65,
+            evidence: [evidence],
+            origin: "explicit",
+          })
         }
-      } else {
-        byId.set(id, {
-          id,
-          statement: quote,
-          confidence: 0.65,
-          evidence: [evidence],
-          origin: "explicit",
-        })
+        if (byId.size >= 40) break
       }
       if (byId.size >= 40) break
     }
@@ -430,10 +452,23 @@ function mergeCounts(
 
 function topCommands(records: MemoryRecord[]): string[] {
   const counts = new Map<string, number>()
+  const seen = new Set<string>()
   for (const record of records) {
-    if (record.kind !== "message.shell") continue
-    const command = typeof record.payload.command === "string" ? record.payload.command.trim() : ""
+    let command = ""
+    if (record.kind === "message.shell") {
+      command = typeof record.payload.command === "string" ? record.payload.command : ""
+    } else if (record.kind === "message.assistant.tool" && record.payload.name === "shell") {
+      const input = record.payload.input
+      if (input && typeof input === "object" && !Array.isArray(input)) {
+        const value = (input as Record<string, unknown>).command
+        if (typeof value === "string") command = value
+      }
+    }
+    command = command.trim()
     if (!command) continue
+    const key = `${record.session_id}:${record.message_id ?? record.record_id}:${command}`
+    if (seen.has(key)) continue
+    seen.add(key)
     const summary = redactText(command.split(/\s+/).slice(0, 4).join(" "), 120)
     counts.set(summary, (counts.get(summary) ?? 0) + 1)
   }
@@ -622,7 +657,7 @@ export async function readCheckpoint(path: string): Promise<Checkpoint | null> {
   }
 }
 
-async function readProfile(path: string): Promise<Profile | null> {
+export async function readProfile(path: string): Promise<Profile | null> {
   if (!existsSync(path)) return null
   try {
     const parsed = JSON.parse(await readFile(path, "utf8")) as Profile

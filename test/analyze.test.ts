@@ -55,6 +55,16 @@ describe("analyzer", () => {
     expect(preferences.some((entry) => entry.statement.includes("Fix the bug"))).toBe(false)
   })
 
+  it("does not treat error logs and shell failures as preferences", () => {
+    const preferences = extractPreferences([
+      rec({ record_id: "e1", payload: { text: "npm error 403 Forbidden - You do not have access to this server." } }),
+      rec({ record_id: "e2", payload: { text: "Error: connect ECONNREFUSED 127.0.0.1:5432. Never retry this." } }),
+      rec({ record_id: "e3", payload: { text: "Always run the focused tests before committing." } }),
+    ])
+    expect(preferences).toHaveLength(1)
+    expect(preferences[0]?.statement).toContain("Always run the focused tests")
+  })
+
   it("merges preferences without losing earlier evidence", () => {
     const a = extractPreferences([rec({ record_id: "a", payload: { text: "Always use pnpm." } })])
     const b = extractPreferences([rec({ record_id: "b", payload: { text: "Always use pnpm." } })])
@@ -100,6 +110,7 @@ describe("analyzer", () => {
     )
     expect(profile?.tools[0]?.name).toBe("shell")
     expect(profile?.workflow.top_shell_commands).toContain("git status")
+    expect(profile?.workflow.top_shell_commands).toContain("pnpm test")
     expect(profile?.technical.some((entry) => entry.name === "TypeScript")).toBe(true)
   })
 
@@ -137,6 +148,7 @@ describe("analyzer", () => {
 
     const globalProfile = JSON.parse(await readFile(join(repo, "developers", "alice", "profile.json"), "utf8"))
     expect(globalProfile.scope).toBe("global")
+    expect(globalProfile.project_id).toBeUndefined()
     expect(globalProfile.preferences.some((entry: { statement: string }) => entry.statement.includes("pnpm"))).toBe(true)
     const checkpoint = await readCheckpoint(join(repo, "sync", "checkpoints", "alice", "proj.json"))
     expect(checkpoint?.version).toBe(1)

@@ -114,6 +114,14 @@ Analysis needs new records. Look for `histories/<project>/<developer>/sessions/*
 - Check that collection is not paused.
 - Remember that `session.context()` only returns messages after the latest compaction; work from before a compaction may not be recoverable.
 
+## Deep analysis fails or is empty
+
+- `/memory-deep-analyze` needs a configured model. Omit `--model` to use OpenCode's default, or pass `--model provider/model`.
+- The command is opt-in and requires an existing global or project profile. Run `/memory-analyze` first if `/memory-profile` says no analysis exists.
+- A provider authentication, quota, or network error is returned in the command output; the plugin does not write a file on failure.
+- The command sends profile data and, by default, the last 30 user messages (truncated and redacted) to the model provider. Use `--no-messages` for profile-only analysis.
+- The generated `developers/<developer>/deep-profile.md` is a hint. Edit or delete it if it is wrong; it is injected at lower priority than explicit preferences and project rules.
+
 ## Context is not injected
 
 - `context_max_chars` must be greater than `0`.

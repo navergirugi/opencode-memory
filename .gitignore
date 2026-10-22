@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 .vitest/
+.idea/
 *.log
 .DS_Store
 .env

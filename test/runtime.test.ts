@@ -25,6 +25,7 @@ interface Harness {
   }
   commands: Map<string, (input: { sessionID: string; prompt: { text: string } }) => Promise<void>>
   synthetic: string[]
+  generatedPrompts: string[]
   cleanup: () => Promise<void>
 }
 
@@ -46,6 +47,7 @@ async function makeHarness(dataDir: string, sessions: Map<string, SourceSession>
   const hooks: Harness["hooks"] = {}
   const commands = new Map<string, (input: { sessionID: string; prompt: { text: string } }) => Promise<void>>()
   const synthetic: string[] = []
+  const generatedPrompts: string[] = []
 
   const ctx = {
     options: { dataDir, scan_interval_seconds: 3_600, sync_interval_seconds: 3_600, analysis_interval_hours: 24 },
@@ -83,6 +85,12 @@ async function makeHarness(dataDir: string, sessions: Map<string, SourceSession>
         edit({ add: (definition) => commands.set(definition.name, definition.execute) })
       },
     },
+    generate: {
+      text: async ({ prompt }: { prompt: string }) => {
+        generatedPrompts.push(prompt)
+        return { text: "# Deep profile\n- Short questions and complete code." }
+      },
+    },
     event: {
       subscribe: ({ signal }: { signal: AbortSignal }) => ({
         async *[Symbol.asyncIterator]() {
@@ -99,6 +107,7 @@ async function makeHarness(dataDir: string, sessions: Map<string, SourceSession>
     hooks,
     commands,
     synthetic,
+    generatedPrompts,
     cleanup: async () => {
       await cleanup?.()
     },
@@ -224,6 +233,18 @@ describe("runtime end to end", () => {
       const analysis = await harness.tool.execute({ action: "analyze" })
       expect(analysis.content).toContain("Analysis complete")
 
+      const profile = await harness.tool.execute({ action: "profile" })
+      expect(profile.content).toContain("OpenCode Memory developer profile")
+      expect(profile.content).toContain("### Global profile")
+      expect(profile.content).toContain("pnpm")
+
+      const deep = await harness.tool.execute({ action: "deep_analyze", include_messages: true })
+      expect(deep.content).toContain("Deep profile generated")
+      expect(harness.generatedPrompts.at(-1)).toContain("Recent user messages")
+      expect(harness.generatedPrompts.at(-1)).toContain("pnpm")
+      const deepPath = join(dataDir, "repo", "developers", "alice", "deep-profile.md")
+      expect(await readFile(deepPath, "utf8")).toContain("# Deep profile")
+
       const event = { sessionID: "ses_1", system: [] as { type: string; text: string }[] }
       await harness.hooks.context?.(event)
       expect(event.system).toHaveLength(1)
@@ -251,6 +272,15 @@ describe("runtime end to end", () => {
 
       await harness.commands.get("memory-status")?.({ sessionID: "ses_1", prompt: { text: "" } })
       expect(harness.synthetic.at(-1)).toContain("OpenCode Memory status")
+
+      await harness.commands.get("memory-profile")?.({ sessionID: "ses_1", prompt: { text: "" } })
+      expect(harness.synthetic.at(-1)).toContain("OpenCode Memory developer profile")
+
+      const generatedBefore = harness.generatedPrompts.length
+      await harness.commands.get("memory-deep-analyze")?.({ sessionID: "ses_1", prompt: { text: "--no-messages" } })
+      expect(harness.synthetic.at(-1)).toContain("Deep profile generated")
+      expect(harness.generatedPrompts.length).toBe(generatedBefore + 1)
+      expect(harness.generatedPrompts.at(-1)).not.toContain("Recent user messages")
 
       const profilePath = join(dataDir, "repo", "developers", "alice", "profile.json")
       const beforeRepeat = JSON.parse(await readFile(profilePath, "utf8")) as { generated_from: unknown; stats: { records: number } }

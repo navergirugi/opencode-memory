@@ -205,7 +205,21 @@ If another device advanced the checkpoint while analysis was running, the stale 
 
 Force a run with `/memory-analyze`. The command intentionally ignores the daily interval; it still respects checkpoints and stale-write protection.
 
-## 9. Uninstall or reset
+## 9. Profile inspection and optional deep analysis
+
+Use `/memory-profile` to inspect the current global profile, project profile, explicit preferences, and optional deep profile. The command is read-only and shows confidence and a short evidence quote for inferred preferences.
+
+The scheduled analyzer is local and does not call an LLM. If you want a richer, model-generated interpretation of your working style, run:
+
+```text
+/memory-deep-analyze
+/memory-deep-analyze --no-messages
+/memory-deep-analyze --model provider/model
+```
+
+The command sends a compact digest to the configured model, writes `developers/<developer>/deep-profile.md`, commits, and pushes. It includes the last 30 user messages by default; `--no-messages` analyzes profiles only. The `deep_analyze` tool action defaults to `include_messages: false`. The generated file is injected into future context at lower priority than project rules and explicit preferences, so review it and edit or delete it if it is wrong. The deep analysis request does not send tool outputs or file contents.
+
+## 10. Uninstall or reset
 
 - **Pause:** call the tool with `action: "pause"` (pause/resume have no slash commands), or set `paused: true`.
 - **Stop loading the plugin:** remove it from `opencode.json(c)` or `.opencode/plugins`.

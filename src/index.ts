@@ -6,7 +6,7 @@ const TOOL_INPUT = {
   properties: {
     action: {
       type: "string",
-      enum: ["status", "setup", "sync", "analyze", "doctor", "pause", "resume", "help"],
+      enum: ["status", "setup", "sync", "analyze", "profile", "deep_analyze", "doctor", "pause", "resume", "help"],
       description: "The memory operation to perform.",
     },
     repo_url: {
@@ -20,6 +20,15 @@ const TOOL_INPUT = {
     developer_name: { type: "string", description: "Optional display name." },
     device_name: { type: "string", description: "Optional name for this computer." },
     project_id: { type: "string", description: "Optional project identifier override for this project." },
+    include_messages: {
+      type: "boolean",
+      description:
+        "For action=deep_analyze only: include a compact digest of recent user messages. Defaults to false for tool calls; the /memory-deep-analyze command defaults to true.",
+    },
+    model: {
+      type: "string",
+      description: "For action=deep_analyze only: optional provider/model, for example openai/gpt-4o.",
+    },
   },
   required: ["action"],
   additionalProperties: false,
@@ -36,7 +45,7 @@ export default Plugin.define({
         editor.add({
           name: "opencode_memory",
           description:
-            "Inspect, configure, sync, or analyze the user's private OpenCode Memory repository. Use action=status for setup and sync state.",
+            "Inspect, configure, sync, or analyze the user's private OpenCode Memory repository. Use action=status for setup and sync state, action=profile to show the analyzed developer profile, or action=deep_analyze for an opt-in LLM profile.",
           input: TOOL_INPUT,
           execute: async (input) => {
             const output = await runtime.handleTool((input ?? {}) as Record<string, unknown>)
@@ -55,6 +64,17 @@ export default Plugin.define({
           { name: "memory-doctor", description: "Verify the memory repository and credentials", action: "doctor" },
           { name: "memory-sync", description: "Flush the local queue, rebase, and push memory records", action: "sync" },
           { name: "memory-analyze", description: "Run the incremental memory analyzer now", action: "analyze" },
+          {
+            name: "memory-profile",
+            description: "Show the current global/project developer profile and explicit preferences",
+            action: "profile",
+          },
+          {
+            name: "memory-deep-analyze",
+            description:
+              "Opt-in LLM developer profile. Sends profile data and (by default) recent user messages to the configured model",
+            action: "deep_analyze",
+          },
           { name: "memory-setup", description: "Configure the private GitHub memory repository", action: "setup" },
         ]
         for (const command of commands) {
@@ -71,6 +91,11 @@ export default Plugin.define({
                 if (developerName) input.developer_name = developerName
                 if (deviceName) input.device_name = deviceName
                 if (projectID) input.project_id = projectID
+              }
+              if (command.action === "deep_analyze") {
+                input.include_messages = !args.includes("--no-messages")
+                const model = args.match(/--model\s+(\S+)/)?.[1]
+                if (model) input.model = model
               }
               const output =
                 command.action === "setup" && !args

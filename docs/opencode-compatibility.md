@@ -91,13 +91,17 @@ The publication docs show package exports as `"exports": { ".": "./src/index.ts"
 - `opencode serve` started and exposed `/api/*`.
 - `GET /api/plugin` listed the built-in plugin set; location plugins activated when a session was created.
 - After creating a session in the test project, `GET /api/command` returned:
-  `memory-status`, `memory-doctor`, `memory-sync`, `memory-analyze`, `memory-setup`.
+  `memory-status`, `memory-doctor`, `memory-sync`, `memory-analyze`, `memory-profile`, `memory-deep-analyze`, `memory-setup`.
 - `POST /api/session/{id}/command` with `{"name":"memory-status","text":""}` executed the command handler.
 - Reading the session context showed the synthetic message:
   `OpenCode Memory status ... - Setup: not configured ... Next step: run setup ...`
 - The plugin log contained only `OpenCode Memory is not configured`; there were no registration errors.
 
 This verifies real OpenCode loading, `ctx.command.transform`, command dispatch, runtime initialization, status generation, and `ctx.session.synthetic`.
+
+### Opt-in generate API
+
+The `deep_analyze` action uses the V2 plugin context's `ctx.generate.text({ prompt, model? })` API. It is not used during collection or scheduled analysis. The default model is used when `model` is omitted; `--model provider/model` passes an explicit `{ providerID, id }` reference. A generation failure is returned as an error and no deep-profile file is written.
 
 ### Documented session context limitation
 

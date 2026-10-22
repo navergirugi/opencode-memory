@@ -62,8 +62,12 @@ export async function buildContextText(sources: ContextSources): Promise<string>
   if (personalNotes.trim()) {
     sections.push({ title: "Your explicit preferences", priority: 3, lines: markdownLines(personalNotes, 20) })
   }
+  const deepProfile = await readText(join(sources.repoDir, "developers", sources.developerID, "deep-profile.md"))
+  if (deepProfile.trim()) {
+    sections.push({ title: "Your deep developer profile (LLM-generated, hints only)", priority: 4, lines: markdownLines(deepProfile, 20) })
+  }
   if (renderedGlobal.length) {
-    sections.push({ title: "Your global preferences (inferred)", priority: 4, lines: renderedGlobal })
+    sections.push({ title: "Your global preferences (inferred)", priority: 5, lines: renderedGlobal })
   }
 
   if (sections.length === 0) return ""

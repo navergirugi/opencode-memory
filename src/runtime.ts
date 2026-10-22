@@ -19,6 +19,15 @@ import {
   GitConflictError,
 } from "./git.js"
 import { analysisDue, nextAnalysisAt, runAnalysis, StaleCheckpointError } from "./analyze.js"
+import {
+  buildDeepAnalysisPrompt,
+  profilePaths,
+  readOptionalProfile,
+  readOptionalText,
+  renderProfileReport,
+  writeDeepProfile,
+} from "./profile.js"
+import { redactText } from "./redact.js"
 import { performSetup, setupSummary, setupUsage } from "./setup.js"
 import type { MemoryConfig, SetupInput, StatusReport, SyncResult } from "./types.js"
 
@@ -44,6 +53,7 @@ export class MemoryRuntime {
   private stopping = false
   private syncInFlight: Promise<SyncResult> | null = null
   private analysisInFlight: Promise<string> | null = null
+  private deepInFlight: Promise<string> | null = null
   private bootstrapInFlight: Promise<void> | null = null
   private contextCache = new Map<string, { at: number; text: string }>()
   private sessionProjectCache = new Map<string, string>()
@@ -394,6 +404,105 @@ export class MemoryRuntime {
     return renderDoctor(report)
   }
 
+  async profile(): Promise<string> {
+    if (!this.config) return "OpenCode Memory is not configured. Run setup first."
+    const projectID = this.projectId()
+    const paths = profilePaths(this.repoDir, this.config.developer_id, projectID)
+    const [globalProfile, projectProfile, explicitPreferences, deepProfile] = await Promise.all([
+      readOptionalProfile(paths.global),
+      readOptionalProfile(paths.project),
+      readOptionalText(paths.explicit),
+      readOptionalText(paths.deep),
+    ])
+    return renderProfileReport({
+      developerID: this.config.developer_id,
+      developerName: this.config.developer_name,
+      projectID,
+      projectName: this.location.projectName,
+      globalProfile,
+      projectProfile,
+      explicitPreferences,
+      deepProfile,
+    })
+  }
+
+  async deepAnalyze(input: { includeMessages?: boolean; model?: string } = {}): Promise<string> {
+    if (this.deepInFlight) return this.deepInFlight
+    this.deepInFlight = this.runDeepAnalyze(input).finally(() => {
+      this.deepInFlight = null
+    })
+    return this.deepInFlight
+  }
+
+  private async runDeepAnalyze(input: { includeMessages?: boolean; model?: string }): Promise<string> {
+    if (!this.config) return "OpenCode Memory is not configured. Run setup first."
+    const projectID = this.projectId()
+    const paths = profilePaths(this.repoDir, this.config.developer_id, projectID)
+    const [globalProfile, projectProfile, explicitPreferences] = await Promise.all([
+      readOptionalProfile(paths.global),
+      readOptionalProfile(paths.project),
+      readOptionalText(paths.explicit),
+    ])
+    if (!globalProfile && !projectProfile) {
+      return "No analyzed profile yet. Run /memory-analyze after collecting a few sessions."
+    }
+
+    const includeMessages = input.includeMessages === true
+    let userMessages: string[] = []
+    if (includeMessages) {
+      const records = projectID
+        ? await this.store.readProject(projectID, this.config.developer_id).catch(() => [])
+        : await this.store.readDeveloper(this.config.developer_id).catch(() => [])
+      userMessages = records
+        .filter((record) => record.kind === "message.user")
+        .sort((a, b) => a.created_at.localeCompare(b.created_at))
+        .slice(-30)
+        .map((record) => (typeof record.payload.text === "string" ? redactText(record.payload.text, 500) : ""))
+        .filter(Boolean)
+    }
+
+    const prompt = buildDeepAnalysisPrompt({
+      developerID: this.config.developer_id,
+      projectID,
+      projectName: this.location.projectName,
+      explicitPreferences,
+      globalProfile,
+      projectProfile,
+      userMessages,
+    })
+
+    let model: { providerID: string; id: string } | undefined
+    if (input.model) {
+      const separator = input.model.indexOf("/")
+      if (separator <= 0 || separator === input.model.length - 1) {
+        return `Invalid model "${input.model}". Use provider/model, for example openai/gpt-4o.`
+      }
+      model = { providerID: input.model.slice(0, separator), id: input.model.slice(separator + 1) }
+    }
+
+    let generated: { text: string }
+    try {
+      generated = await this.ctx.generate.text({ prompt, model })
+    } catch (error) {
+      return `Deep analysis failed: ${error instanceof Error ? error.message : String(error)}`
+    }
+    const text = generated.text?.trim()
+    if (!text) return "Deep analysis returned an empty response. Nothing was saved."
+
+    const path = await writeDeepProfile(this.repoDir, this.config.developer_id, text)
+    this.contextCache.clear()
+    const sync = await this.sync("deep-analysis")
+    return [
+      `Deep profile generated and saved to ${path}.`,
+      includeMessages
+        ? "The request included a compact digest of the last 30 user messages."
+        : "The request included profiles only; recent user messages were excluded.",
+      sync.error ? `Sync failed; the profile is saved locally and will be retried.\n${sync.error}` : `Sync complete (${sync.pushed ? "pushed" : "no changes"}).`,
+      "",
+      text,
+    ].join("\n")
+  }
+
   async setup(input: SetupInput): Promise<string> {
     try {
       const existing = this.config
@@ -538,6 +647,13 @@ export class MemoryRuntime {
           if (!this.config) return "OpenCode Memory is not configured. Run setup first."
           return await this.analyze(true)
         }
+        case "profile":
+          return await this.profile()
+        case "deep_analyze":
+          return await this.deepAnalyze({
+            includeMessages: input.include_messages === true,
+            model: typeof input.model === "string" && input.model.trim() ? input.model.trim() : undefined,
+          })
         case "pause":
           return await this.setPaused(true)
         case "resume":
@@ -569,6 +685,8 @@ export function helpText(): string {
     "- doctor: verify repository read/write access and local state",
     "- sync: flush the local queue, rebase, and push (never force-pushes)",
     "- analyze: run the incremental analyzer now",
+    "- profile: show the current global/project profile and explicit preferences",
+    "- deep_analyze: opt-in LLM profile generation (sends a compact profile digest to the configured model)",
     "- pause / resume: stop or restart collection",
     "",
     "Configuration is stored outside the repository; GitHub credentials are read from your Git credential helper, an environment token, or `gh auth token`.",
