@@ -16,9 +16,9 @@
     "type": "git",
     "url": "git+https://github.com/navergirugi/opencode-memory.git"
   },
-  "homepage": "hhttps://github.com/navergirugi/opencode-memory#readme",
+  "homepage": "https://github.com/navergirugi/opencode-memory#readme",
   "bugs": {
-    "url": "hhttps://github.com/navergirugi/opencode-memory/issues"
+    "url": "https://github.com/navergirugi/opencode-memory/issues"
   },
   "exports": {
     ".": {

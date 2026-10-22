@@ -61,6 +61,29 @@ opencode-memory.context  local    .../.opencode/plugins/memory/index.ts
 
 The loader watched the re-exported files under `src/`, which confirms the entire module graph was loaded. A directory containing only `package.json` was not loaded in this version, so this repository also ships a root `index.ts`.
 
+### Global plugin loading
+
+For multiple projects, the verified approach in `v2.0.32` is OpenCode's global discovery directory:
+
+```text
+~/.config/opencode/plugins/opencode-memory/index.ts
+```
+
+```ts
+export { default } from "/absolute/path/to/opencode-memory-context/index.ts"
+```
+
+After restarting, `opencode plugin list` reported:
+
+```text
+ID                       VERSION  SOURCE
+opencode-memory.context  local    ~/.config/opencode/plugins/opencode-memory/index.ts
+```
+
+The plugin then appeared in the active session and was available in another project directory without a project-local wrapper.
+
+In our test, adding a local `.ts` file directly as a string entry in the global `plugins` array did not register it, while the discovery directory did. Use the discovery wrapper above for a local checkout. Published packages can use the documented `plugins` array or `opencode plugin add`.
+
 The publication docs show package exports as `"exports": { ".": "./src/index.ts" }`, which this package supports.
 
 ### Server, session, commands, and synthetic output

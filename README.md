@@ -55,6 +55,33 @@ A local plugin directory is also supported. Create `.opencode/plugins/opencode-m
 export { default } from "/absolute/path/to/opencode-memory-context/index.ts"
 ```
 
+### Use in every project
+
+A wrapper under a project's `.opencode/plugins/` directory applies only to that project. To load the plugin for every project on this computer, put the wrapper in OpenCode's global plugin directory instead:
+
+```text
+~/.config/opencode/plugins/opencode-memory/index.ts
+```
+
+```ts
+export { default } from "/absolute/path/to/opencode-memory-context/index.ts"
+```
+
+Then restart OpenCode and verify:
+
+```bash
+opencode plugin list
+```
+
+Expected:
+
+```text
+ID                       VERSION  SOURCE
+opencode-memory.context  local    /Users/you/.config/opencode/plugins/opencode-memory/index.ts
+```
+
+This is the recommended setup for multiple projects. Memory profiles remain separated by each session's project ID; global loading does not merge projects.
+
 Once published, `opencode plugin add opencode-memory-context` installs it globally.
 
 ### Plugin options
