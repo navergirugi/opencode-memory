@@ -15,6 +15,7 @@ export interface RuntimeState {
   last_analysis_at?: string
   last_analysis_attempt_at?: string
   last_analysis_error?: string
+  last_deep_analysis_at?: string
   last_scan_at?: string
   collected_sessions: number
   queued_records: number
