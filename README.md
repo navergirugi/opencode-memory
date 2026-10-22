@@ -195,6 +195,8 @@ Examples:
 /memory-deep-analyze --model openai/gpt-4o
 ```
 
+**Daily limit:** You can run `/memory-deep-analyze` only once per day. After the first run today, the second attempt is blocked until tomorrow. It also skips execution if there is no new session/message data since the previous deep analysis.
+
 `--no-messages` excludes recent user prompts and analyzes the profiles only. The `opencode_memory` tool defaults to `include_messages: false`; the slash command defaults to including messages because you invoked it explicitly.
 
 **Privacy note:** the deep analysis request sends the profile digest and, unless `--no-messages` is used, the last 30 user prompts (truncated and redacted) to the selected model provider. It does not send tool outputs or file contents. The generated file is a hint, not an authoritative rule; edit or delete it if it is wrong.

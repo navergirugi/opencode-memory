@@ -205,6 +205,8 @@ If another device advanced the checkpoint while analysis was running, the stale 
 
 Force a run with `/memory-analyze`. The command intentionally ignores the daily interval; it still respects checkpoints and stale-write protection.
 
+**Deep analysis (`/memory-deep-analyze`)** is limited to once per day. A second attempt on the same calendar day returns a message: "오늘 이미 심층 분석을 실행했습니다." It also skips if there is no new session/message data since the previous deep analysis.
+
 ## 9. Profile inspection and optional deep analysis
 
 Use `/memory-profile` to inspect the current global profile, project profile, explicit preferences, and optional deep profile. The command is read-only and shows confidence and a short evidence quote for inferred preferences.
@@ -218,6 +220,15 @@ The scheduled analyzer is local and does not call an LLM. If you want a richer, 
 ```
 
 The command sends a compact digest to the configured model, writes `developers/<developer>/deep-profile.md`, commits, and pushes. It includes the last 30 user messages by default; `--no-messages` analyzes profiles only. The `deep_analyze` tool action defaults to `include_messages: false`. The generated file is injected into future context at lower priority than project rules and explicit preferences, so review it and edit or delete it if it is wrong. The deep analysis request does not send tool outputs or file contents.
+
+### Expected token usage
+
+| Operation | Approximate tokens | When |
+| --- | --- | --- |
+| Context injection | 1,000–2,000 | Every model request (the injected block is capped by `context_max_chars`) |
+| Deep analysis | 4,000–6,000 | Only when you run `/memory-deep-analyze` (at most once per day) |
+
+Collection, redaction, Git sync, and the scheduled analyzer run entirely locally and consume no model tokens.
 
 ## 10. Uninstall or reset
 
