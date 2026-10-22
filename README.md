@@ -231,6 +231,11 @@ The repository layout is documented in [docs/architecture.md](docs/architecture.
 - **Individual inference is never promoted to team rules.** Candidate team rules are written only to `shared-context.proposal.md`; canonical project files are never edited by the analyzer.
 - **Private data is not part of the npm package.** The package ships source, docs, README, and license only.
 
+### Expected token usage
+
+- **Context injection:** Every model request includes an automatically injected context block (project rules, profile stats, and preferences). This consumes approximately **1,000–2,000 tokens** per request, which is deducted from your model provider's context limit.
+- **Deep analysis:** Running `/memory-deep-analyze` sends a compact profile summary and recent user messages to the model. This is a one-time operation per analysis and consumes approximately **4,000–6,000 tokens**. This only happens when you explicitly run the command.
+
 See [docs/setup.md](docs/setup.md) for authentication choices and team onboarding.
 
 ## How context is applied

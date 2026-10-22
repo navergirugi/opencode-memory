@@ -438,6 +438,13 @@ export class MemoryRuntime {
     if (!this.config) return "OpenCode Memory is not configured. Run setup first."
     const projectID = this.projectId()
     const paths = profilePaths(this.repoDir, this.config.developer_id, projectID)
+    
+    // 1. 하루 한 번 제한 확인
+    const today = new Date().toDateString()
+    if (this.state.last_deep_analysis_at && new Date(this.state.last_deep_analysis_at).toDateString() === today) {
+      return "오늘 이미 심층 분석을 실행했습니다. 하루에 한 번만 실행할 수 있습니다."
+    }
+
     const [globalProfile, projectProfile, explicitPreferences] = await Promise.all([
       readOptionalProfile(paths.global),
       readOptionalProfile(paths.project),
@@ -447,14 +454,22 @@ export class MemoryRuntime {
       return "No analyzed profile yet. Run /memory-analyze after collecting a few sessions."
     }
 
+    // 2. 최근 작업 내역 확인
+    const records = projectID
+        ? await this.store.readProject(projectID, this.config.developer_id).catch(() => [])
+        : await this.store.readDeveloper(this.config.developer_id).catch(() => [])
+    
+    const lastDeep = this.state.last_deep_analysis_at ? new Date(this.state.last_deep_analysis_at) : null
+    const hasNewRecords = records.some(r => new Date(r.created_at) > (lastDeep || new Date(0)))
+    if (!hasNewRecords) {
+      return "마지막 심층 분석 이후 새로운 작업 내역이 없습니다."
+    }
+
     const includeMessages = input.includeMessages === true
     let userMessages: string[] = []
     if (includeMessages) {
-      const records = projectID
-        ? await this.store.readProject(projectID, this.config.developer_id).catch(() => [])
-        : await this.store.readDeveloper(this.config.developer_id).catch(() => [])
       userMessages = records
-        .filter((record) => record.kind === "message.user")
+        .filter((record) => record.kind === "message.user" && (!lastDeep || new Date(record.created_at) > lastDeep))
         .sort((a, b) => a.created_at.localeCompare(b.created_at))
         .slice(-30)
         .map((record) => (typeof record.payload.text === "string" ? redactText(record.payload.text, 500) : ""))
@@ -491,6 +506,11 @@ export class MemoryRuntime {
 
     const path = await writeDeepProfile(this.repoDir, this.config.developer_id, text)
     this.contextCache.clear()
+    
+    // 3. 마지막 분석 시간 업데이트
+    this.state.last_deep_analysis_at = new Date().toISOString()
+    await writeRuntimeState(this.dataDir, this.state).catch(() => undefined)
+
     const sync = await this.sync("deep-analysis")
     return [
       `Deep profile generated and saved to ${path}.`,

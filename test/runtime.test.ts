@@ -278,9 +278,8 @@ describe("runtime end to end", () => {
 
       const generatedBefore = harness.generatedPrompts.length
       await harness.commands.get("memory-deep-analyze")?.({ sessionID: "ses_1", prompt: { text: "--no-messages" } })
-      expect(harness.synthetic.at(-1)).toContain("Deep profile generated")
-      expect(harness.generatedPrompts.length).toBe(generatedBefore + 1)
-      expect(harness.generatedPrompts.at(-1)).not.toContain("Recent user messages")
+      expect(harness.synthetic.at(-1)).toContain("오늘 이미 심층 분석을 실행했습니다")
+      expect(harness.generatedPrompts.length).toBe(generatedBefore)
 
       const profilePath = join(dataDir, "repo", "developers", "alice", "profile.json")
       const beforeRepeat = JSON.parse(await readFile(profilePath, "utf8")) as { generated_from: unknown; stats: { records: number } }
