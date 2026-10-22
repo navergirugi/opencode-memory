@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "opencode-memory-context",
+  "version": "0.1.0",
+  "description": "Private, Git-backed developer memory for OpenCode: collect sessions, analyze them incrementally, and apply project-aware context.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "memory",
+    "developer-profile",
+    "context"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/navergirugi/opencode-memory.git"
+  },
+  "homepage": "hhttps://github.com/navergirugi/opencode-memory#readme",
+  "bugs": {
+    "url": "hhttps://github.com/navergirugi/opencode-memory/issues"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./index.ts"
+    }
+  },
+  "files": [
+    "index.ts",
+    "src",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "@opencode/plugin": "^2.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
